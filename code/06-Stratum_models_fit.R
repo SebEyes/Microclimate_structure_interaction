@@ -352,6 +352,22 @@ all_interactions <- all_interactions %>%
     significant_BH = p_adjusted_BH < 0.05
   )
 
+all_fixed_effects = purrr::map_dfr(
+  model_results,
+  ~ .x$fixed_effects
+)
+
+all_fixed_effects <- all_fixed_effects %>%
+  mutate(
+    p_adjusted_BH = p.adjust(p.value, method = "BH"),
+    significant_BH = p_adjusted_BH < 0.05
+  )
+
+write.table(
+  all_fixed_effects,
+  "data/models_estimates.csv"
+)
+
 
 for (resp in names(model_results)) {
 
@@ -390,7 +406,7 @@ all_fits <- purrr::map_dfr(
 )
 
 write.table(
-    sig_mod_BH,
+    all_fits,
     file = "data/stratum_models_fits.csv",
     sep = ";",
     row.names = F
