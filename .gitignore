@@ -2,4 +2,4 @@
 *.rds
 
 ## Old computation code before peer reviews
-code/Old/
+**/Old
