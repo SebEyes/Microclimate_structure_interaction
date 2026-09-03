@@ -1,4 +1,9 @@
 using Pkg
+
+## Set up Julia env
+Pkg.activate(".")
+Pkg.add(["CSV", "DataFrames", "TidierData", "Dates", "Statistics", "Psychrometrics"])
+
 using CSV
 using DataFrames
 using Dates
