@@ -1,3 +1,7 @@
+## Ensure that you installed the required package to gather data from CAMS
+## Note that cdsapi will not work immediately after installation. It requires an access key to connect to the Copernicus Climate Data Store.
+## More information: https://cds.climate.copernicus.eu/how-to-api
+
 import cdsapi
 import pandas as pd
 # Load site locations from CSV
