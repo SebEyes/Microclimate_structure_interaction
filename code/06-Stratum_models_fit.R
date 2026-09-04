@@ -417,6 +417,22 @@ write.table(
 # 3. Diagnostics
 #---------------------------------
 
+## VIF analysis
+model_selected = model_results$GRD_temperature_mean$model
+
+vif_results = vif(model_selected) %>% as.data.frame()
+vif_results$variable = row.names(vif_results)
+vif_results = vif_results %>% dplyr::rename(
+  "VIF value" = "."
+)
+
+write.table(
+  vif_results,
+  "docs/supplementary/VIF.csv",
+  sep = ";",
+  row.names = F
+)
+
 # Diagnostic plot
 plot_standard_diagnostics <- function(result) {
 
