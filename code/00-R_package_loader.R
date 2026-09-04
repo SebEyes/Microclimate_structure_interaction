@@ -3,6 +3,10 @@
 #---------------------------------
 rm(list = ls())
 
+if(!requireNamespace("pacman", quietly = TRUE)){
+    install.packages("pacman")
+}
+
 pacman::p_load(
     tidyverse,
     reshape2,
