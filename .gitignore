@@ -6,3 +6,9 @@ code/Old/
 
 ## VSCode settings files
 .vscode/
+
+## Change diagnostic folder for new models
+docs/diagnostics
+
+## Remove previous heatmap (model without seasonality)
+docs\Figures\Heatmap_correlation.png
