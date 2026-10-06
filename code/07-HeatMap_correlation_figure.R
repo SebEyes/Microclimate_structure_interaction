@@ -4,7 +4,7 @@ source("code/00-R_package_loader.R")
 # 1. Data Loading
 #---------------------------------
 results_correlation = read.csv(
-    "data/significant_interactions.csv",
+    "data/significant_interactions_seasons.csv",
     sep = ";"
 )
 head(results_correlation)
@@ -22,10 +22,13 @@ data_heatmap = select(
     )
 )
 
-# Keep only interaction terms
+# Keep only interaction terms and remove interaction term with seasons
 data_heatmap = data_heatmap %>% filter(
   str_detect(term, "energy_tot:")
+) %>% filter(
+  str_detect(term, ":season", negate = T)
 )
+
 
 head(data_heatmap)
 
@@ -123,7 +126,7 @@ data_heatmap_plot <- data_heatmap |>
 
 print(data_heatmap_plot)
 ggsave(
-    "docs/Figures/Heatmap_correlation.png",
+    "docs/Figures/Heatmap_correlation-V2.png",
     plot = data_heatmap_plot,
     width = 10,
     height = 8,

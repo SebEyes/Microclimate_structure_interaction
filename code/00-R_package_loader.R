@@ -20,5 +20,6 @@ pacman::p_load(
     car,
     e1071,
     glmmTMB,
-    see
+    see,
+    writexl
 )

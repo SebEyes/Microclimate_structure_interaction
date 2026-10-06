@@ -83,6 +83,18 @@ data_selected <- dataset_modelling %>%
 data_selected <- data_selected %>%
     distinct(site_code, date, .keep_all = TRUE)
 
+
+# Add seasonality variables
+data_selected$doy = as.integer(format(data_selected$date, "%j"))
+
+data_selected$season_sin <- sin(2 * pi * data_selected$doy / 365.25)
+data_selected$season_cos <- cos(2 * pi * data_selected$doy / 365.25)
+
+seasonal_predictors = c(
+  "season_sin",
+  "season_cos"
+)
+
 ## Response distribution
 response_distribution <- data_selected %>%
   select(all_of(response_vars)) %>%
@@ -157,18 +169,43 @@ fit_microclimate_model <- function(resp, data) {
             )
         )
 
+        formula_lme_season <- as.formula(
+            paste0(
+            resp,
+            " ~ energy_tot * (",
+            paste(structural_predictors, collapse = " + "),
+            " + ",
+            paste(seasonal_predictors, collapse = " + "),
+            ")"
+            )
+        )
+
         data$time_days <- as.numeric(difftime(data$date, min(data$date), units = "days"))
 
         # Extract data used in model
         model_data <- na.omit(data[, unique(c(
             all.vars(formula_lme),
             "site_code",
-            "time_days"
+            "time_days",
+            seasonal_predictors
         ))])
 
         # Gaussian LMM with continuous-time CAR(1)
         mod_ar1 <- nlme::lme(
                 fixed = formula_lme,
+                random = ~ 1 | site_code,
+                correlation = corCAR1(
+                form = ~ time_days | site_code
+                ),
+                data = data,
+                method = "ML",
+                na.action = na.omit,
+                control = nlmeControl(returnObject = TRUE)
+            )
+        
+        # Gaussian LMM with continuous-time CAR(1) and seasonality
+        mod_ar1_season <- nlme::lme(
+                fixed = formula_lme_season,
                 random = ~ 1 | site_code,
                 correlation = corCAR1(
                 form = ~ time_days | site_code
@@ -199,6 +236,7 @@ fit_microclimate_model <- function(resp, data) {
             data,
             resp, "energy_tot", "date",
             structural_predictors,
+            seasonal_predictors,
             "site_code"
         ) %>% na.omit()
 
@@ -222,6 +260,26 @@ fit_microclimate_model <- function(resp, data) {
 
         mod_ar1 <- glmmTMB(
             formula = formula_gamma_OU,
+            family = Gamma(link = "log"),
+            data = data_gamma,
+            na.action = na.omit
+        )
+
+        # Gamma GLMM with continuous-distance decay and seasonality
+        formula_gamma_OU_season <- as.formula(
+            paste0(
+            resp,
+            " ~ energy_tot * (",
+            paste(structural_predictors, collapse = " + "),
+            " + ",
+            paste(seasonal_predictors, collapse = " + "),
+            ")",
+            "+ (1 | site_code) + ou(time_days + 0 | site_code)"
+            )
+        )
+
+        mod_ar1_season <- glmmTMB(
+            formula = formula_gamma_OU_season,
             family = Gamma(link = "log"),
             data = data_gamma,
             na.action = na.omit
@@ -255,7 +313,7 @@ fit_microclimate_model <- function(resp, data) {
 
   # Fixed-effect table
   fixed_tab <- broom.mixed::tidy(
-    mod_ar1,
+    mod_ar1_season,
     effects = "fixed",
     conf.int = TRUE
   ) %>%
@@ -270,17 +328,17 @@ fit_microclimate_model <- function(resp, data) {
     )
 
   # Model fit statistics
-  r2_values <- performance::model_performance(mod_ar1)
+  r2_values <- performance::model_performance(mod_ar1_season)
 
   fit_tab <- tibble(
     response = resp,
-    n = nobs(mod_ar1),
-    AIC_CAR1 = AIC(mod_ar1),
-    BIC_CAR1 = BIC(mod_ar1),
-    logLik_CAR1 = as.numeric(logLik(mod_ar1)),
+    n = nobs(mod_ar1_season),
+    AIC_CAR1 = AIC(mod_ar1_season),
+    BIC_CAR1 = BIC(mod_ar1_season),
+    logLik_CAR1 = as.numeric(logLik(mod_ar1_season)),
     R2_marginal = if (!is.null(r2_values)) r2_values$R2_marginal else NA_real_,
     R2_conditional = if (!is.null(r2_values)) r2_values$R2_conditional else NA_real_,
-    convergence = mod_ar1$convergence
+    convergence = mod_ar1_season$convergence
   )
 
   # Temporal-correlation comparison
@@ -310,19 +368,42 @@ fit_microclimate_model <- function(resp, data) {
     )
   }
 
+  # TSeasonality comparison
+  seasonality_comparison <- if (!is.null(mod_ind)) {
+    tibble(
+      response = resp,
+      AIC_CAR1_season = AIC(mod_ar1_season),
+      AIC_CAR1 = AIC(mod_ar1),
+      delta_AIC_season = AIC(mod_ar1_season) - AIC(mod_ar1),
+      likelihood_ratio_p = tryCatch(
+        anova(mod_ar1_season, mod_ar1)$`p-value`[2],
+        error = function(e) NA_real_
+      )
+    )
+  } else {
+    tibble(
+      response = resp,
+      AIC_independent = NA_real_,
+      AIC_CAR1 = AIC(mod_ar1),
+      delta_AIC_AR1 = NA_real_,
+      likelihood_ratio_p = NA_real_
+    )
+  }
 
-  model_data$fitted <- fitted(mod_ar1, level = 0)
-  model_data$residual <- residuals(mod_ar1, type = "response")
+
+  model_data$fitted <- fitted(mod_ar1_season, level = 0)
+  model_data$residual <- residuals(mod_ar1_season, type = "response")
   model_data$response_value <- model_data[[resp]]
 
   model_results = list(
     response = resp,
-    model = mod_ar1,
+    model = mod_ar1_season,
     model_independent = mod_ind,
     fixed_effects = fixed_tab,
     interactions = interaction_tab,
     fit = fit_tab,
     temporal_comparison = temporal_comparison,
+    seasonality_comparison = seasonality_comparison,
     model_data = model_data
   )
   model_results
@@ -336,14 +417,38 @@ model_results <- setNames(
 ## Save models to RDS file
 saveRDS(
     model_results,
-    file = "data/stratum_models.rds"
+    file = "data/stratum_models-V2.rds"
+)
+
+model_results = readRDS("data/stratum_models-V2.rds")
+
+## Check Seasonality
+Seasonality_AIC <- purrr::map_dfr(
+  model_results,
+  "seasonality_comparison"
+)
+
+## Check temporal correlation
+Temporal_AIC <- purrr::map_dfr(
+  model_results,
+  "temporal_comparison"
+)
+
+
+## Write model validation
+write_xlsx(
+  list(
+    Temporal_AIC,
+    Seasonality_AIC
+  ),
+  path = "docs/model_validation.xlsx"
 )
 
 ## Apply multiplicity correction to interaction terms
 
 all_interactions <- purrr::map_dfr(
   model_results,
-  ~ .x$interactions
+  "interactions"
 )
 
 all_interactions <- all_interactions %>%
@@ -365,7 +470,7 @@ all_fixed_effects <- all_fixed_effects %>%
 
 write.table(
   all_fixed_effects,
-  "data/models_estimates.csv"
+  "data/models_estimates_seasons.csv"
 )
 
 
@@ -394,7 +499,7 @@ sig_mod_BH <- all_interactions %>%
 
 write.table(
     sig_mod_BH,
-    file = "data/significant_interactions.csv",
+    file = "data/significant_interactions_seasons.csv",
     sep = ";",
     row.names = F
 )
@@ -407,7 +512,7 @@ all_fits <- purrr::map_dfr(
 
 write.table(
     all_fits,
-    file = "data/stratum_models_fits.csv",
+    file = "data/stratum_models_seasons_fits.csv",
     sep = ";",
     row.names = F
 )
@@ -494,7 +599,7 @@ diagnostic_plots <- lapply(
 for (resp in names(diagnostic_plots)) {
   ggsave(
     filename = file.path(
-      "docs/diagnostics",
+      "docs/diagnostics_V2",
       paste0(resp, "_standard_diagnostics.png")
     ),
     plot = diagnostic_plots[[resp]],
