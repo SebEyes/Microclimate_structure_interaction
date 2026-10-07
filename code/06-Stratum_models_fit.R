@@ -538,7 +538,7 @@ write.table(
   row.names = F
 )
 
-# Diagnostic plot
+## Diagnostic plot
 plot_standard_diagnostics <- function(result) {
 
   dat <- result$model_data
@@ -607,4 +607,29 @@ for (resp in names(diagnostic_plots)) {
     height = 10,
     dpi = 300
   )
+}
+
+## Residuals ACF plots
+
+model_names <- c(
+  "GRD_DTR", "GRD_DVPDR",
+  "UND_DTR", "UND_DVPDR",
+  "CAN_DTR", "CAN_DVPDR",
+  "GRD_temperature_mean",
+  "GRD_vpd_kPA_mean",
+  "UND_temperature_mean",
+  "UND_vpd_kPA_mean",
+  "CAN_temperature_mean",
+  "CAN_vpd_kPA_mean"
+)
+
+# Save each ACF plot as a separate PNG file
+for (name in model_names) {
+  png(filename = paste0("docs/diagnostics_V2/ACF_plots/ACF_", name, ".png"),
+      width = 900, height = 700)
+
+  acf(stats::residuals(model_results[[name]]$model),
+      main = paste("ACF of residuals:", name))
+
+  dev.off()
 }
